@@ -1,0 +1,151 @@
+import React, { useState, useRef, useEffect } from "react";
+
+export default function Think41ImageSmoothingApp() {
+  const [image, setImage] = useState(null);
+  const [grayscale, setGrayscale] = useState(false);
+  const [kernelSize, setKernelSize] = useState(3);
+  const [pixelInfo, setPixelInfo] = useState(null);
+
+  const originalCanvasRef = useRef(null);
+  const smoothedCanvasRef = useRef(null);
+  const imageRef = useRef(null);
+  const imageDataRef = useRef(null);
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = originalCanvasRef.current;
+        const ctx = canvas.getContext("2d");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        imageDataRef.current = ctx.getImageData(0, 0, img.width, img.height);
+      };
+      img.src = URL.createObjectURL(file);
+      setImage(img);
+    }
+  };
+
+  const toGrayscale = (imageData) => {
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      data[i] = data[i + 1] = data[i + 2] = avg;
+    }
+    return imageData;
+  };
+
+  const smoothImage = () => {
+    if (!imageDataRef.current) return;
+    const canvas = smoothedCanvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const srcData = imageDataRef.current;
+    const width = srcData.width;
+    const height = srcData.height;
+    canvas.width = width;
+    canvas.height = height;
+
+    let data = new Uint8ClampedArray(srcData.data);
+    if (grayscale) {
+      data = toGrayscale(new ImageData(data, width, height)).data;
+    }
+
+    const dst = new Uint8ClampedArray(data.length);
+    const half = Math.floor(kernelSize / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = 0, g = 0, b = 0, a = 0, count = 0;
+        for (let ky = -half; ky <= half; ky++) {
+          for (let kx = -half; kx <= half; kx++) {
+            const ny = y + ky;
+            const nx = x + kx;
+            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+              const idx = (ny * width + nx) * 4;
+              r += data[idx];
+              g += data[idx + 1];
+              b += data[idx + 2];
+              a += data[idx + 3];
+              count++;
+            }
+          }
+        }
+        const i = (y * width + x) * 4;
+        dst[i] = r / count;
+        dst[i + 1] = g / count;
+        dst[i + 2] = b / count;
+        dst[i + 3] = a / count;
+      }
+    }
+
+    const imageData = new ImageData(dst, width, height);
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  const handleMouseMove = (event) => {
+    const canvas = originalCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(event.clientX - rect.left);
+    const y = Math.floor(event.clientY - rect.top);
+    if (!imageDataRef.current) return;
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+    const index = (y * canvas.width + x) * 4;
+    const data = imageDataRef.current.data;
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const a = data[index + 3];
+    setPixelInfo(`(${x}, ${y}): R=${r} G=${g} B=${b} A=${a}`);
+  };
+
+  return (
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Think41: Image Smoothing Tool</h1>
+      <input type="file" accept="image/*" onChange={handleImageUpload} />
+      <div className="flex items-center gap-4">
+        <label>
+          <input
+            type="checkbox"
+            checked={grayscale}
+            onChange={(e) => setGrayscale(e.target.checked)}
+          />
+          Convert to Grayscale First
+        </label>
+        <label>
+          Neighborhood:
+          <select
+            className="ml-2 border rounded px-2 py-1"
+            value={kernelSize}
+            onChange={(e) => setKernelSize(parseInt(e.target.value))}
+          >
+            <option value={3}>3x3</option>
+            <option value={5}>5x5</option>
+          </select>
+        </label>
+        <button
+          onClick={smoothImage}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Smooth Image
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-lg font-semibold">Original Image</h2>
+          <canvas
+            ref={originalCanvasRef}
+            onMouseMove={handleMouseMove}
+            className="border"
+          ></canvas>
+          {pixelInfo && <p className="text-sm mt-1">{pixelInfo}</p>}
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold">Smoothed Image</h2>
+          <canvas ref={smoothedCanvasRef} className="border"></canvas>
+        </div>
+      </div>
+    </div>
+  );
+}
