@@ -1,0 +1,155 @@
+import React, { useRef, useState, useEffect } from 'react';
+
+export default function ImageSmoothingApp() {
+  const fileInputRef = useRef();
+  const originalCanvasRef = useRef();
+  const smoothedCanvasRef = useRef();
+  const [neighborhoodSize, setNeighborhoodSize] = useState(3); // Default to 3x3
+  const [grayscale, setGrayscale] = useState(false);
+  const [pixelValue, setPixelValue] = useState(null);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = originalCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applySmoothingFilter = () => {
+    const origCanvas = originalCanvasRef.current;
+    const smoothedCanvas = smoothedCanvasRef.current;
+    const width = origCanvas.width;
+    const height = origCanvas.height;
+    const ctxOrig = origCanvas.getContext('2d');
+    const ctxSmooth = smoothedCanvas.getContext('2d');
+
+    const imageData = ctxOrig.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const newImageData = ctxSmooth.createImageData(width, height);
+    const newData = newImageData.data;
+
+    const k = Math.floor(neighborhoodSize / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = 0, g = 0, b = 0, a = 0, count = 0;
+        for (let dy = -k; dy <= k; dy++) {
+          for (let dx = -k; dx <= k; dx++) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const i = (ny * width + nx) * 4;
+              if (grayscale) {
+                const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                r += gray;
+                g += gray;
+                b += gray;
+              } else {
+                r += data[i];
+                g += data[i + 1];
+                b += data[i + 2];
+              }
+              a += data[i + 3];
+              count++;
+            }
+          }
+        }
+        const idx = (y * width + x) * 4;
+        newData[idx] = r / count;
+        newData[idx + 1] = g / count;
+        newData[idx + 2] = b / count;
+        newData[idx + 3] = a / count;
+      }
+    }
+
+    smoothedCanvas.width = width;
+    smoothedCanvas.height = height;
+    ctxSmooth.putImageData(newImageData, 0, 0);
+  };
+
+  const handleMouseMove = (e) => {
+    const canvas = originalCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(e.clientX - rect.left);
+    const y = Math.floor(e.clientY - rect.top);
+    const ctx = canvas.getContext('2d');
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    setPixelValue({ x, y, r: pixel[0], g: pixel[1], b: pixel[2], a: pixel[3] });
+  };
+
+  // Optional: Reset image function to reload original state
+  const resetImage = () => {
+    if (fileInputRef.current && fileInputRef.current.files.length > 0) {
+      handleImageUpload({ target: { files: fileInputRef.current.files } });
+    }
+  };
+
+  return (
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <h2>Think41 Project: Image Smoothing Filter</h2>
+
+      {/* Image upload input */}
+      <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageUpload} />
+
+      <div style={{ margin: '10px 0' }}>
+        {/* Option to convert to grayscale before smoothing */}
+        <label>
+          <input
+            type="checkbox"
+            checked={grayscale}
+            onChange={(e) => setGrayscale(e.target.checked)}
+          />{' '}
+          Convert to Grayscale First
+        </label>
+
+        {/* Dropdown for selecting neighborhood size */}
+        <label style={{ marginLeft: '20px' }}>
+          Neighborhood Size:{' '}
+          <select value={neighborhoodSize} onChange={(e) => setNeighborhoodSize(parseInt(e.target.value))}>
+            <option value={3}>3x3</option>
+            <option value={5}>5x5</option>
+            <option value={7}>7x7</option>
+          </select>
+        </label>
+
+        <button style={{ marginLeft: '20px' }} onClick={applySmoothingFilter}>
+          Smooth Image
+        </button>
+
+        <button style={{ marginLeft: '10px' }} onClick={resetImage}>Reset</button>
+      </div>
+
+      {/* Show original and smoothed images side by side */}
+      <div style={{ display: 'flex', gap: '20px' }}>
+        <div>
+          <h4>Original Image</h4>
+          <canvas ref={originalCanvasRef} onMouseMove={handleMouseMove} style={{ border: '1px solid black' }} />
+        </div>
+        <div>
+          <h4>Smoothed Image</h4>
+          <canvas ref={smoothedCanvasRef} style={{ border: '1px solid black' }} />
+        </div>
+      </div>
+
+      {/* Pixel value display on hover */}
+      {pixelValue && (
+        <div style={{ marginTop: '15px' }}>
+          Hovered Pixel @ ({pixelValue.x}, {pixelValue.y}) → RGBA: (
+          {pixelValue.r}, {pixelValue.g}, {pixelValue.b}, {pixelValue.a})
+        </div>
+      )}
+    </div>
+  );
+}
